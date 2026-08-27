@@ -30,6 +30,8 @@ class CacheConfig(BaseModel):
 
 class LoadTestConfig(BaseModel):
     requests: int = Field(gt=0)
+    concurrent_workers: int = Field(default=1, gt=0)
+    random_seed: int = 42
 
 
 class ScenarioConfig(BaseModel):

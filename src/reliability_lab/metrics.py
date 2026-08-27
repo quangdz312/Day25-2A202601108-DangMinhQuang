@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import csv
 import json
+from collections.abc import Iterable
 from pathlib import Path
 from statistics import median
-from typing import Iterable
 
 from pydantic import BaseModel, Field
 
@@ -19,8 +20,11 @@ class RunMetrics(BaseModel):
     recovery_time_ms: float | None = None
     estimated_cost: float = 0.0
     estimated_cost_saved: float = 0.0
+    duration_ms: float = 0.0
     latencies_ms: list[float] = Field(default_factory=list)
     scenarios: dict[str, str] = Field(default_factory=dict)
+    scenario_metrics: dict[str, dict[str, object]] = Field(default_factory=dict)
+    benchmarks: dict[str, dict[str, object]] = Field(default_factory=dict)
 
     @property
     def availability(self) -> float:
@@ -39,6 +43,11 @@ class RunMetrics(BaseModel):
         denom = self.fallback_successes + self.static_fallbacks
         return self.fallback_successes / denom if denom else 0.0
 
+    @property
+    def throughput_rps(self) -> float:
+        seconds = self.duration_ms / 1000.0
+        return self.total_requests / seconds if seconds > 0 else 0.0
+
     def percentile(self, q: float) -> float:
         return percentile(self.latencies_ms, q)
 
@@ -56,7 +65,11 @@ class RunMetrics(BaseModel):
             "recovery_time_ms": self.recovery_time_ms,
             "estimated_cost": round(self.estimated_cost, 6),
             "estimated_cost_saved": round(self.estimated_cost_saved, 6),
+            "duration_ms": round(self.duration_ms, 2),
+            "throughput_rps": round(self.throughput_rps, 2),
             "scenarios": self.scenarios,
+            "scenario_metrics": self.scenario_metrics,
+            "benchmarks": self.benchmarks,
         }
 
     def write_json(self, path: str | Path) -> None:
@@ -64,15 +77,23 @@ class RunMetrics(BaseModel):
         Path(path).write_text(json.dumps(self.to_report_dict(), indent=2, ensure_ascii=False))
 
     def write_csv(self, path: str | Path) -> None:
-        """Export metrics to CSV format.
+        """Export metrics to CSV format."""
+        report_dict = self.to_report_dict()
+        scenarios = report_dict.pop("scenarios", {})
+        if isinstance(scenarios, dict):
+            for name, status in scenarios.items():
+                report_dict[f"scenario_{name}"] = status
+        for key in ("scenario_metrics", "benchmarks"):
+            nested = report_dict.get(key)
+            if isinstance(nested, dict):
+                report_dict[key] = json.dumps(nested, ensure_ascii=False, sort_keys=True)
 
-        TODO(student): Implement CSV export:
-        1. Get report dict via self.to_report_dict()
-        2. Flatten the "scenarios" dict: each scenario becomes "scenario_{name}" column
-        3. Write a single-row CSV with csv.DictWriter (import csv at top of file)
-        4. Create parent directories if needed
-        """
-        raise NotImplementedError("TODO: implement write_csv()")
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=list(report_dict.keys()))
+            writer.writeheader()
+            writer.writerow(report_dict)
 
 
 def percentile(values: Iterable[float], q: float) -> float:

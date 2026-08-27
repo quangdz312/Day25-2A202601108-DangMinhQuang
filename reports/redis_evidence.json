@@ -1,0 +1,10 @@
+{
+  "ping": true,
+  "cross_instance_read": true,
+  "key": "rl:evidence:15d767c9cd6c",
+  "ttl_seconds": 300,
+  "fields": {
+    "query": "what are the operating hours for customer service",
+    "response": "[evidence] customer service is available during published hours"
+  }
+}
